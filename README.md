@@ -15,7 +15,7 @@ Camera fader functions implemented like [Multi Theft Auto](https://wiki.multithe
 Useful string functions implemented.
 
 ## How to use
-1. Download all of `.inc` files.
+1. Download all of `*.inc` files from `pawno/include` in this project.
 2. Move to your PAWN include directory. (e.g `C:\pawno\includes\`)
 
 ## Author
