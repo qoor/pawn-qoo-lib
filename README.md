@@ -16,7 +16,7 @@ Useful string functions implemented.
 
 ## How to use
 1. Download all of `*.inc` files from `pawno/include` in this project.
-2. Move to your PAWN include directory. (e.g `C:\pawno\includes\`)
+2. Move to your PAWN include directory. (e.g `C:\pawno\include\`)
 
 ## Author
 Qoo.
