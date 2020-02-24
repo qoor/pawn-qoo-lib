@@ -11,6 +11,13 @@ Set of data structure defined to PAWN language.
 ### QFader
 Camera fader functions implemented like [Multi Theft Auto](https://wiki.multitheftauto.com/wiki/FadeCamera).
 
+### QString
+Useful string functions implemented.
+
+## How to use
+1. Download all of `.inc` files.
+2. Move to your PAWN include directory. (e.g `C:\pawno\includes\`)
+
 ## Author
 Qoo.
 
