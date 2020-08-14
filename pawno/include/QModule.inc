@@ -1,8 +1,8 @@
-//=================================================================================================
-//											  QModule
+//==============================================================================
+//                                 QModule
 //
-//											version: v7.3
-//											 author: Qoo
+//                              version: v7.4
+//                               author: Qoo
 //
 // MIT License
 // 
@@ -26,7 +26,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 // 
-//=================================================================================================
+//==============================================================================
 
 /*개선 사항:
 v1.0: 최초 릴리즈 (LA:RP 모듈 알고리즘을 참고했음.) Thank you for Acu.
@@ -48,7 +48,7 @@ v5.0:
 	1. EventInfo, EventInfoWithSuspend 함수가 제거되고 TriggerEvent(이벤트ID, 이벤트 끝낼 반환값, 파라미터 포멧, 파마리터) 함수가 추가되었습니다.
 	2. 단순히 함수를 호출하는 함수였던 TriggerEvent가 실제로 등록된 이벤트를 호출하는 함수로 개선되었습니다.
 v5.1:
-	1. AddEventHandler 함수에 우선순위 기능(priority 파라미터. default = MAX_HANDLER_FUNCTION / 2)이 추가되었습니다.
+	1. AddEventHandler 함수에 우선순위 기능(priority 파라미터. default = MAX_EVENT_HANDLERS / 2)이 추가되었습니다.
 	2. TriggerEventWithBreak, TriggerEventNoSuspend 함수가 추가되었습니다.
 v5.2:
 	1. MainScript(), InitScript("모듈명") 함수가 각각 main(), InitModule("모듈명")으로 변경되었습니다.
@@ -109,7 +109,7 @@ v7.0:
 		ㄴ playerList란, 두 인클루드를 연동 시 기존의 단순 반복문을 통한 플레이어 반복문이 아니라, 접속한 유저만 빠르게 검사하고 플레이어 접속 정보를 담아둔 Container 변수입니다.
 		ㄴ IsPlayerConnected 함수도 같이 후킹됩니다. playerList를 통해 빠르게 플레이어 접속 여부를 알려줍니다. 반드시 가장 마지막에 QModule을 포함해 주십시오. 그렇지 않으면 QModule보다 나중에 포함 된 인클루드들과 호환성 문제가 생길 수 있습니다.
 		ㄴ 플레이어 루프문의 예시는 contloop (new i : playerList) { ... } or contloop (i : playerList) { ... } 등과 같은 형식으로 이용 가능합니다.
-v7.1
+v7.1:
 	1. Params 기능들의 구조가 약간씩 변경되었고, 성능이 향상되었습니다.
 		ㄴ 매 함수들마다 맨 앞 인자로 값이 들어갈 변수를 지정해야 합니다.
 		ㄴ Ex) new intVar; GetParamInt(intVar, params, 0);
@@ -118,13 +118,19 @@ v7.1
 		ㄴ 또한, GetParamPoint에서만 delimiter 지정이 가능했지만 이제는 모든 Params 함수들에서 delimiter을 지정할 수 있습니다.
 		ㄴ v5.5의 Changelog에 있는 Params 함수들의 설명이 변경됩니다.
 		ㄴ 이 업데이트 이후부터 IsValidParamIndex는 값을 활용하는 것이 아니라 오로지 검색만 할 경우와 같은 제한적인 상황에서만 사용하시는 것을 권장합니다.
-v7.2
+v7.2:
 	1. Params 기능들을 QString으로 이전하였습니다.
 	2. strfix 함수를 QString으로 이전하였습니다.
 	3. 일부 문자열 함수 인자들에 const를 추가하였습니다.
 
-v7.3
+v7.3:
 	1. SA-MP 0.3.7 미만 버전들의 지원이 종료 되었습니다.
+
+v7.4
+	1. 코드 가독성을 개선하였습니다.
+	2. 잘못된 이벤트 index 참조 버그를 수정하였습니다.
+	3. 네이티브 이벤트 수 검증 기능을 추가하였습니다.
+	4. 일부 성능 최적화 작업이 이루어졌습니다.
 */
 
 #if defined _QModule_included
@@ -133,175 +139,183 @@ v7.3
 #define _QModule_included
 #pragma library QModule
 
-#define QMODULE_QCONTAINER_PLAYERLIST 1
+#define QMODULE_QCONTAINER_PLAYERLIST
 
 #include <a_samp>
 #include <QString>
 
-#if QMODULE_QCONTAINER_PLAYERLIST != 0
+#if defined QMODULE_QCONTAINER_PLAYERLIST
 	#include <QContainer>
 #endif
 
-#define QMODULE_ENGINE_VERSION "v7.3"
+#define QMODULE_ENGINE_VERSION "v7.4"
 
 main() { return 1; }
 
-#define main() forward __InitMain(); public __InitMain()
-#define InitModule("%0") forward LoadModule_%0(); public LoadModule_%0()
+#define main()								public __InitMain()
+#define InitModule("%0")					forward LoadModule_%0(); public LoadModule_%0()
 
-#define HandlerLoop(%0) for(new %0_i = 0, %0_j = handlerIDX[%0]; %0_i < %0_j; %0_i ++)
-#define HandlerAction(%0,"%1"%2) CallLocalFunction(handlerName[%0][%0_i], #%1%2)
-/*#define TriggerEvent(%0,"%1"%2) HandlerLoop(%0) CallLocalFunction(handlerName[%0][%0_i], #%1%2)
-#define TriggerEvent(%0,%1,"%2"%3); HandlerLoop(%0) { if((CallLocalFunction(handlerName[%0][%0_i], #%2%3)) == %1) return %1; }*/
-#define TriggerEvent(%0,%1,%2); HandlerLoop(%0) { if((HandlerAction(%0, %2)) == %1) return %1; }
-#define TriggerEventWithBreak(%0,%1,%2); HandlerLoop(%0) { if((HandlerAction(%0, %2)) == %1) break; }
-#define TriggerEventNoSuspend(%0,%1); HandlerLoop(%0) { HandlerAction(%0, %1); }
-
-//#define strfix(%0) if (%0[0] == 0) %0[0] = '\1'
-
-#define MAX_EVENTS 128
-#define MAX_HANDLER_FUNCTION 128
-
-#define D_FilterScriptInit 0
-#define D_GameModeInit 1
-#define D_FilterScriptExit 2
-#define D_GameModeExit 3
-#define D_PlayerRequestClass 4
-#define D_PlayerConnect 5
-#define D_PlayerDisconnect 6
-#define D_PlayerSpawn 7
-#define D_PlayerDeath 8
-#define D_VehicleSpawn 9
-#define D_VehicleDeath 10
-#define D_PlayerText 11
-#define D_PlayerCommandText 12
-#define D_PlayerEnterVehicle 13
-#define D_PlayerExitVehicle 14
-#define D_PlayerStateChange 15
-#define D_PlayerEnterCheckpoint 16
-#define D_PlayerLeaveCheckpoint 17
-#define D_PlayerEnterRaceCheckpoint 18
-#define D_PlayerLeaveRaceCheckpoint 19
-#define D_RconCommand 20
-#define D_PlayerRequestSpawn 21
-#define D_ObjectMoved 22
-#define D_PlayerObjectMoved 23
-#define D_PlayerPickUpPickup 24
-#define D_VehicleMod 25
-#define D_VehiclePaintjob 26
-#define D_VehicleRespray 27
-#define D_PlayerSelectedMenuRow 28
-#define D_PlayerExitedMenu 29
-#define D_PlayerInteriorChange 30
-#define D_PlayerKeyStateChange 31
-#define D_RconLoginAttempt 32
-#define D_PlayerUpdate 33
-#define D_PlayerStreamIn 34
-#define D_PlayerStreamOut 35
-#define D_VehicleStreamIn 36
-#define D_VehicleStreamOut 37
-#define D_DialogResponse 38
-#define D_PlayerClickPlayer 39
-#define D_PlayerExitMenu 40
-#define D_PlayerGiveDamage 41
-#define D_PlayerTakeDamage 42
-#define D_PlayerClickMap 43
-#define D_VehicleDamageStatusUpdate 44
-#define D_UnoccupiedVehicleUpdate 45
-#define D_EnterExitModShop 46
-#define D_PlayerEditObject 48
-#define D_PlayerEditAttachedObject 49
-#define D_PlayerSelectObject 50
-#define D_PlayerClickTextDraw 51
-#define D_PlayerClickPlayerTextDraw 52
-#define D_IncomingConnection 53
-#define D_PlayerWeaponShot 54
-#define D_TrailerUpdate 55
-#define D_ActorStreamIn 56
-#define D_ActorStreamOut 57
-#define D_PlayerGiveDamageActor 58
-#define D_VehicleSirenStateChange 59
-#define D_PlayerCommandTextFail 60
-
-new _scriptLoaded;
-
-new moduleName[MAX_HANDLER_FUNCTION][21];
-new moduleIDX;
-
-new handlerName[MAX_EVENTS][MAX_HANDLER_FUNCTION][32];
-new handlerPriority[MAX_EVENTS][MAX_HANDLER_FUNCTION];
-new handlerIDX[MAX_EVENTS];
-
-new eventIDX;
-
-#if QMODULE_QCONTAINER_PLAYERLIST != 0
-	CreateContainer(playerList, MAX_PLAYERS);
-
-	stock Qoo_IsPlayerConnected(playerid)
-	{
-		return (IsValidContainerData(playerList, playerid));
-	}
-	#if defined _ALS_IsPlayerConnected
-		#undef IsPlayerConnected
-	#else
-		#define _ALS_IsPlayerConnected
-	#endif
-	#define IsPlayerConnected Qoo_IsPlayerConnected
+#if !defined FALSE
+	stock bool: FALSE = false;
 #endif
 
-stock QModule_strlen(const string[])
-{
-	if (IsNull(string)) return 0;
+#define HandlerLoop(%0)						for (new %0_i = 0, %0_max = g_num_handlers[%0]; %0_i < %0_max; ++%0_i)
+#define HandlerAction(%0,"%1"%2)			CallLocalFunction(g_handler_funcs[%0][%0_i], #%1%2)
+#define TriggerEvent(%0,%1,%2)				do { HandlerLoop(%0) { if ((HandlerAction(%0, %2)) == %1) return %1; } } while (FALSE)
+#define TriggerEventWithBreak(%0,%1,%2)		do { HandlerLoop(%0) { if ((HandlerAction(%0, %2)) == %1) break; } while (FALSE)
+#define TriggerEventNoSuspend(%0,%1)		do { HandlerLoop(%0) { HandlerAction(%0, %1); } } while (FALSE)
 
-	return strlen(string);
-}
+#define MAX_EVENTS							128
+#define MAX_EVENT_HANDLERS					128
+
+#define MAX_MODULE_NAMES					21
+#define MAX_HANDLER_FUNC_LEN				32
+
+// DEFAULT_PRIORITY
+// 기본 우선순위 값
+// 우선순위 값은 0 이상일 경우 낮을 수록 우선순위가 높음
+#define DEFAULT_PRIORITY					-1
+
+enum E_SCRIPT_TYPE
+{
+	SCRIPT_TYPE_GAME_MODE,
+	SCRIPT_TYPE_FILTER_SCRIPT
+};
+
+enum _: e_NATIVE_EVENTS
+{
+	D_FilterScriptInit,
+	D_GameModeInit,
+	D_FilterScriptExit,
+	D_GameModeExit,
+	D_PlayerRequestClass,
+	D_PlayerConnect,
+	D_PlayerDisconnect,
+	D_PlayerSpawn,
+	D_PlayerDeath,
+	D_VehicleSpawn,
+	D_VehicleDeath,
+	D_PlayerText,
+	D_PlayerCommandText,
+	D_PlayerEnterVehicle,
+	D_PlayerExitVehicle,
+	D_PlayerStateChange,
+	D_PlayerEnterCheckpoint,
+	D_PlayerLeaveCheckpoint,
+	D_PlayerEnterRaceCheckpoint,
+	D_PlayerLeaveRaceCheckpoint,
+	D_RconCommand,
+	D_PlayerRequestSpawn,
+	D_ObjectMoved,
+	D_PlayerObjectMoved,
+	D_PlayerPickUpPickup,
+	D_VehicleMod,
+	D_VehiclePaintjob,
+	D_VehicleRespray,
+	D_PlayerSelectedMenuRow,
+	D_PlayerExitedMenu,
+	D_PlayerInteriorChange,
+	D_PlayerKeyStateChange,
+	D_RconLoginAttempt,
+	D_PlayerUpdate,
+	D_PlayerStreamIn,
+	D_PlayerStreamOut,
+	D_VehicleStreamIn,
+	D_VehicleStreamOut,
+	D_DialogResponse,
+	D_PlayerClickPlayer,
+	D_PlayerExitMenu,
+	D_PlayerGiveDamage,
+	D_PlayerTakeDamage,
+	D_PlayerClickMap,
+	D_VehicleDamageStatusUpdate,
+	D_UnoccupiedVehicleUpdate,
+	D_EnterExitModShop,
+	D_PlayerEditObject,
+	D_PlayerEditAttachedObject,
+	D_PlayerSelectObject,
+	D_PlayerClickTextDraw,
+	D_PlayerClickPlayerTextDraw,
+	D_IncomingConnection,
+	D_PlayerWeaponShot,
+	D_TrailerUpdate,
+	D_ActorStreamIn,
+	D_ActorStreamOut,
+	D_PlayerGiveDamageActor,
+	D_VehicleSirenStateChange,
+	D_PlayerCommandTextFail
+};
+
+new static bool: g_script_loaded = false;
+
+new static g_module_names[MAX_EVENT_HANDLERS][MAX_MODULE_NAMES];
+new static g_num_modules = 0;
+
+new static g_handler_funcs[MAX_EVENTS][MAX_EVENT_HANDLERS][MAX_HANDLER_FUNC_LEN];
+new static g_handler_priorities[MAX_EVENTS][MAX_EVENT_HANDLERS] = { -1, ... };
+new static g_num_handlers[MAX_EVENTS];
+
+new static g_num_events = 0;
+
+#if defined QMODULE_QCONTAINER_PLAYERLIST
+CreateContainer(playerList, MAX_PLAYERS);
+
+#if defined _ALS_IsPlayerConnected
+	#undef IsPlayerConnected
+#else
+	#define _ALS_IsPlayerConnected
+#endif
+#define IsPlayerConnected(%0) IsValidContainerData(playerList, %0)
+#endif
+
+// 메인 콜백
+forward __InitMain();
+
+native old_strlen(string[]) = strlen;
 #if defined _ALS_strlen
 	#undef strlen
 #else
 	#define _ALS_strlen
 #endif
-#define strlen QModule_strlen
+#define strlen(%0) ((IsNull((%0))) ? (0) : (old_strlen((%0))))
 
 public OnFilterScriptInit()
 {
-	#if defined FILTERSCRIPT
-		if(_scriptLoaded == 0) InitializeQModule(0);
-	#endif
+#if defined FILTERSCRIPT
+	if (!g_script_loaded)
+		InitializeQModule(SCRIPT_TYPE_FILTER_SCRIPT);
+#endif
 
 	TriggerEvent(D_FilterScriptInit, 1, "");
-
 	return 1;
 }
 
 public OnGameModeInit()
 {
-	#if !defined FILTERSCRIPT
-		if(_scriptLoaded == 0) InitializeQModule(1);
-	#endif
+#if !defined FILTERSCRIPT
+	if (!g_script_loaded)
+		InitializeQModule(SCRIPT_TYPE_GAME_MODE);
+#endif
 
 	TriggerEvent(D_GameModeInit, 1, "");
-
 	return 1;
 }
 
 public OnFilterScriptExit()
 {
 	TriggerEvent(D_FilterScriptExit, 1, "");
-
 	return 1;
 }
 
 public OnGameModeExit()
 {
 	TriggerEvent(D_GameModeExit, 1, "");
-
 	return 1;
 }
 
 public OnPlayerRequestClass(playerid, classid)
 {
 	TriggerEvent(D_PlayerRequestClass, 0, "ii", playerid, classid);
-
 	return 1;
 }
 
@@ -313,57 +327,52 @@ public OnPlayerConnect(playerid)
 
 	if (strlen(name) >= 3)
 	{
-		#if QMODULE_QCONTAINER_PLAYERLIST != 0
-			AddContainerData(playerList, playerid);
-		#endif
+	#if defined QMODULE_QCONTAINER_PLAYERLIST
+		AddContainerData(playerList, playerid);
+	#endif
 
 		TriggerEvent(D_PlayerConnect, 1, "i", playerid);
 	}
-	
+
 	return 1;
 }
 
 public OnPlayerDisconnect(playerid, reason)
 {
-	#if QMODULE_QCONTAINER_PLAYERLIST != 0
-		if (IsPlayerConnected(playerid))
-		{
-			TriggerEvent(D_PlayerDisconnect, 1, "ii", playerid, reason);
-
-			RemoveContainerData(playerList, playerid);
-		}
-	#else
+#if defined QMODULE_QCONTAINER_PLAYERLIST
+	if (IsPlayerConnected(playerid))
+	{
 		TriggerEvent(D_PlayerDisconnect, 1, "ii", playerid, reason);
-	#endif
 
+		RemoveContainerData(playerList, playerid);
+	}
+#else
+	TriggerEvent(D_PlayerDisconnect, 1, "ii", playerid, reason);
+#endif
 	return 1;
 }
 
 public OnPlayerSpawn(playerid)
 {
 	TriggerEvent(D_PlayerSpawn, 1, "i", playerid);
-
 	return 1;
 }
 
 public OnPlayerDeath(playerid, killerid, reason)
 {
 	TriggerEvent(D_PlayerDeath, 1, "iii", playerid, killerid, reason);
-
 	return 1;
 }
 
 public OnVehicleSpawn(vehicleid)
 {
 	TriggerEvent(D_VehicleSpawn, 1, "i", vehicleid);
-
 	return 1;
 }
 
 public OnVehicleDeath(vehicleid, killerid)
 {
 	TriggerEvent(D_VehicleDeath, 1, "ii", vehicleid, killerid);
-
 	return 1;
 }
 
@@ -372,7 +381,6 @@ public OnPlayerText(playerid, text[])
 	strfix(text);
 
 	TriggerEvent(D_PlayerText, 0, "is", playerid, text);
-
 	return 1;
 }
 
@@ -384,13 +392,14 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	ParamInitialize(command, params, cmdtext);
 	strfix(command);
 	strfix(params);
+
 	TriggerEvent(D_PlayerCommandText, 1, "iss", playerid, command, params);
 
 #if defined FILTERSCRIPT
 	return 0;
 #else
+	// 명령어를 찾지 못했을 경우
 	TriggerEvent(D_PlayerCommandTextFail, 1, "is", playerid, command);
-
 	return 1;
 #endif
 }
@@ -398,49 +407,42 @@ public OnPlayerCommandText(playerid, cmdtext[])
 public OnPlayerEnterVehicle(playerid, vehicleid, ispassenger)
 {
 	TriggerEvent(D_PlayerEnterVehicle, 1, "iii", playerid, vehicleid, ispassenger);
-
 	return 1;
 }
 
 public OnPlayerExitVehicle(playerid, vehicleid)
 {
 	TriggerEvent(D_PlayerExitVehicle, 1, "ii", playerid, vehicleid);
-
 	return 1;
 }
 
 public OnPlayerStateChange(playerid, newstate, oldstate)
 {
 	TriggerEvent(D_PlayerStateChange, 1, "iii", playerid, newstate, oldstate);
-
 	return 1;
 }
 
 public OnPlayerEnterCheckpoint(playerid)
 {
 	TriggerEvent(D_PlayerEnterCheckpoint, 1, "i", playerid);
-
 	return 1;
 }
 
 public OnPlayerLeaveCheckpoint(playerid)
 {
 	TriggerEvent(D_PlayerLeaveCheckpoint, 1, "i", playerid);
-
 	return 1;
 }
 
 public OnPlayerEnterRaceCheckpoint(playerid)
 {
 	TriggerEvent(D_PlayerEnterRaceCheckpoint, 1, "i", playerid);
-
 	return 1;
 }
 
 public OnPlayerLeaveRaceCheckpoint(playerid)
 {
 	TriggerEvent(D_PlayerLeaveRaceCheckpoint, 1, "i", playerid);
-
 	return 1;
 }
 
@@ -452,10 +454,12 @@ public OnRconCommand(cmd[])
 
 	HandlerLoop(D_RconCommand)
 	{
-		if((val = HandlerAction(D_RconCommand, "s", cmd)) == 1) break;
+		if ((val = HandlerAction(D_RconCommand, "s", cmd)) == 1)
+			break;
 	}
 
-	if(val == 0) printf(" Unknown command: %s", cmd);
+	if (val == 0)
+		printf(" Unknown command: %s", cmd);
 
 	return 1;
 }
@@ -463,77 +467,66 @@ public OnRconCommand(cmd[])
 public OnPlayerRequestSpawn(playerid)
 {
 	TriggerEvent(D_PlayerRequestClass, 0, "i", playerid);
-
 	return 1;
 }
 
 public OnObjectMoved(objectid)
 {
 	TriggerEvent(D_ObjectMoved, 1, "i", objectid);
-
 	return 1;
 }
 
 public OnPlayerObjectMoved(playerid, objectid)
 {
 	TriggerEvent(D_PlayerObjectMoved, 1, "ii", playerid, objectid);
-
 	return 1;
 }
 
 public OnPlayerPickUpPickup(playerid, pickupid)
 {
 	TriggerEvent(D_PlayerPickUpPickup, 1, "ii", playerid, pickupid);
-
 	return 1;
 }
 
 public OnVehicleMod(playerid, vehicleid, componentid)
 {
 	TriggerEvent(D_VehicleMod, 0, "iii", playerid, vehicleid, componentid);
-
 	return 1;
 }
 
 public OnVehiclePaintjob(playerid, vehicleid, paintjobid)
 {
 	TriggerEvent(D_VehiclePaintjob, 0, "iii", playerid, vehicleid, paintjobid);
-
 	return 1;
 }
 
 public OnVehicleRespray(playerid, vehicleid, color1, color2)
 {
 	TriggerEvent(D_VehicleRespray, 0, "iiii", playerid, vehicleid, color1, color2);
-
 	return 1;
 }
 
 public OnPlayerSelectedMenuRow(playerid, row)
 {
 	TriggerEvent(D_PlayerSelectedMenuRow, 1, "ii", playerid, row);
-
 	return 1;
 }
 
 public OnPlayerExitedMenu(playerid)
 {
 	TriggerEvent(D_PlayerExitMenu, 1, "i", playerid);
-
 	return 1;
 }
 
 public OnPlayerInteriorChange(playerid, newinteriorid, oldinteriorid)
 {
 	TriggerEvent(D_PlayerInteriorChange, 1, "iii", playerid, newinteriorid, oldinteriorid);
-
 	return 1;
 }
 
 public OnPlayerKeyStateChange(playerid, newkeys, oldkeys)
 {
 	TriggerEvent(D_PlayerKeyStateChange, 1, "iii", playerid, newkeys, oldkeys);
-
 	return 1;
 }
 
@@ -543,42 +536,36 @@ public OnRconLoginAttempt(ip[], password[], success)
 	strfix(password);
 
 	TriggerEvent(D_RconLoginAttempt, 1, "ssi", ip, password, success);
-
 	return 1;
 }
 
 public OnPlayerUpdate(playerid)
 {
 	TriggerEvent(D_PlayerUpdate, 0, "i", playerid);
-
 	return 1;
 }
 
 public OnPlayerStreamIn(playerid, forplayerid)
 {
 	TriggerEvent(D_PlayerStreamIn, 1, "ii", playerid, forplayerid);
-
 	return 1;
 }
 
 public OnPlayerStreamOut(playerid, forplayerid)
 {
 	TriggerEvent(D_PlayerStreamOut, 1, "ii", playerid, forplayerid);
-
 	return 1;
 }
 
 public OnVehicleStreamIn(vehicleid, forplayerid)
 {
 	TriggerEvent(D_VehicleStreamIn, 1, "ii", vehicleid, forplayerid);
-
 	return 1;
 }
 
 public OnVehicleStreamOut(vehicleid, forplayerid)
 {
 	TriggerEvent(D_VehicleStreamOut, 1, "ii", vehicleid, forplayerid);
-
 	return 1;
 }
 
@@ -587,311 +574,261 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 	strfix(inputtext);
 
 	TriggerEvent(D_DialogResponse, 1, "iiiis", playerid, dialogid, response, listitem, inputtext);
-
 	return 0;
 }
 
 public OnPlayerClickPlayer(playerid, clickedplayerid, source)
 {
 	TriggerEvent(D_PlayerClickPlayer, 1, "iii", playerid, clickedplayerid, source);
-
 	return 1;
 }
 
 public OnPlayerClickMap(playerid, Float: fX, Float: fY, Float: fZ)
 {
 	TriggerEvent(D_PlayerClickMap, 1, "ifff", playerid, fX, fY, fZ);
-
 	return 1;
 }
 
 public OnVehicleDamageStatusUpdate(vehicleid, playerid)
 {
 	TriggerEvent(D_VehicleDamageStatusUpdate, 1, "ii", vehicleid, playerid);
-
 	return 1;
 }
 
 public OnUnoccupiedVehicleUpdate(vehicleid, playerid, passenger_seat)
 {
 	TriggerEvent(D_UnoccupiedVehicleUpdate, 0, "iii", vehicleid, playerid, passenger_seat);
-
 	return 1;
 }
 
 public OnEnterExitModShop(playerid, enterexit, interiorid)
 {
 	TriggerEvent(D_EnterExitModShop, 1, "iii", playerid, enterexit, interiorid);
-
 	return 1;
 }
 
-public OnPlayerGiveDamage(playerid, damagedid, Float: amount, weaponid, bodypart)
+public OnPlayerGiveDamage(playerid, damagedid,
+						  Float: amount, weaponid, bodypart)
 {
 	TriggerEvent(D_PlayerGiveDamage, 1, "iifii", playerid, damagedid, amount, weaponid, bodypart);
-
 	return 0;
 }
 
 public OnPlayerTakeDamage(playerid, issuerid, Float: amount, weaponid, bodypart)
 {
 	TriggerEvent(D_PlayerTakeDamage, 1, "iifii", playerid, issuerid, amount, weaponid, bodypart);
-
 	return 0;
 }
 
-public OnPlayerEditObject(playerid, playerobject, objectid, response, Float: fX, Float: fY, Float: fZ, Float: fRotX, Float: fRotY, Float: fRotZ)
+public OnPlayerEditObject(playerid, playerobject, objectid, response,
+						  Float: fX, Float: fY, Float: fZ,
+						  Float: fRotX, Float: fRotY, Float: fRotZ)
 {
 	TriggerEvent(D_PlayerEditObject, 1, "iiiiffffff", playerid, playerobject, objectid, response, fX, fY, fZ, fRotX, fRotY, fRotZ);
-
 	return 0;
 }
 
-public OnPlayerEditAttachedObject(playerid, response, index, modelid, boneid, Float: fOffsetX, Float: fOffsetY, Float: fOffsetZ, Float: fRotX, Float: fRotY, Float: fRotZ, Float: fScaleX, Float: fScaleY, Float: fScaleZ)
+public OnPlayerEditAttachedObject(
+		playerid, response, index, modelid, boneid,
+		Float: fOffsetX, Float: fOffsetY, Float: fOffsetZ,
+		Float: fRotX, Float: fRotY, Float: fRotZ,
+		Float: fScaleX, Float: fScaleY, Float: fScaleZ)
 {
 	TriggerEvent(D_PlayerEditAttachedObject, 1, "iiiiifffffffff", playerid, response, index, modelid, boneid, fOffsetX, fOffsetY, fOffsetZ, fRotX, fRotY, fRotZ, fScaleX, fScaleY, fScaleZ);
-
 	return 0;
 }
 
-public OnPlayerSelectObject(playerid, type, objectid, modelid, Float: fX, Float: fY, Float: fZ)
+public OnPlayerSelectObject(playerid, type, objectid, modelid,
+							Float: fX, Float: fY, Float: fZ)
 {
 	TriggerEvent(D_PlayerSelectObject, 1, "iiiifff", playerid, type, objectid, modelid, fX, fY, fZ);
-
 	return 0;
 }
 
 public OnPlayerClickTextDraw(playerid, Text: clickedid)
 {
 	TriggerEvent(D_PlayerClickTextDraw, 1, "ii", playerid, _: clickedid);
-
 	return 0;
 }
 
 public OnPlayerClickPlayerTextDraw(playerid, PlayerText: playertextid)
 {
 	TriggerEvent(D_PlayerClickTextDraw, 1, "ii", playerid, _: playertextid);
-
 	return 0;
 }
 
 public OnIncomingConnection(playerid, ip_address[], port)
 {
 	TriggerEvent(D_IncomingConnection, 1, "isi", playerid, ip_address, port);
-
 	return 0;
 }
 
-public OnPlayerWeaponShot(playerid, weaponid, hittype, hitid, Float: fX, Float: fY, Float: fZ)
+public OnPlayerWeaponShot(playerid, weaponid, hittype, hitid,
+						  Float: fX, Float: fY, Float: fZ)
 {
 	TriggerEvent(D_PlayerWeaponShot, 0, "iiiifff", playerid, weaponid, hittype, hitid, fX, fY, fZ);
-
 	return 1;
 }
 
 public OnTrailerUpdate(playerid, vehicleid)
 {
 	TriggerEvent(D_TrailerUpdate, 0, "ii", playerid, vehicleid);
-
 	return 1;
 }
 
 public OnActorStreamIn(actorid, forplayerid)
 {
 	TriggerEvent(D_ActorStreamIn, 1, "ii", actorid, forplayerid);
-
 	return 1;
 }
 
 public OnActorStreamOut(actorid, forplayerid)
 {
 	TriggerEvent(D_ActorStreamIn, 1, "ii", actorid, forplayerid);
-
 	return 1;
 }
 
-public OnPlayerGiveDamageActor(playerid, damaged_actorid, Float: amount, weaponid, bodypart)
+public OnPlayerGiveDamageActor(playerid, damaged_actorid,
+							   Float: amount, weaponid, bodypart)
 {
 	TriggerEvent(D_PlayerGiveDamageActor, 1, "iifii", playerid, damaged_actorid, amount, weaponid, bodypart);
-
 	return 0;
 }
 
 public OnVehicleSirenStateChange(playerid, vehicleid, newstate)
 {
 	TriggerEvent(D_VehicleSirenStateChange, 1, "iii", playerid, vehicleid, newstate);
-
 	return 0;
 }
 
-stock AddEvent(const eventName[])
+static stock InsertHandler(eventid, const handler[], priority)
 {
-	if(eventIDX >= MAX_EVENTS)
+	new num_handlers = g_num_handlers[eventid];
+	new index = num_handlers;
+
+	if (priority >= 0)
 	{
-		print("[QModule] Event is already full. Max event amount: "#MAX_EVENTS"");
+		index = GenerateHandlerID(eventid, priority);
+		// 만약 핸들러가 중간에 삽입될 예정일 때
+		if (index != num_handlers)
+		{
+			// i = g_num_handlers[eventid] - 1 이 아닌 이유는 "뒤로 당기는 작업"이기 때문
+			for (new i = g_num_handlers[eventid]; i > index; --i)
+			{
+				g_handler_funcs[eventid][i] = g_handler_funcs[eventid][i - 1];
+				g_handler_priorities[eventid][i] =
+						g_handler_priorities[eventid][i - 1];
+			}
+		}
+	}
+
+	strcpy(g_handler_funcs[eventid][index], handler);
+	g_handler_funcs[eventid][index][MAX_HANDLER_FUNC_LEN - 1] = 0;
+	g_handler_priorities[eventid][index] = priority;
+	++g_num_handlers[eventid];
+	return index;
+}
+
+static stock bool: RemoveHandler(eventid, const handler[])
+{
+	new bool: id_founded = false;
+	new num_handlers = g_num_handlers[eventid];
+
+	for (new i = 0; i < num_handlers; ++i)
+	{
+		if (!id_founded)
+		{
+			// 해당 핸들러 함수의 위치를 찾은 경우
+			if (strcmp(g_handler_funcs[eventid][i], handler, false) == 0)
+			{
+				--num_handlers;
+				id_founded = true;
+			}
+			else
+			{
+				continue; // 위치를 찾은 경우에는 이동 작업만 함
+			}
+		}
+		
+		// 위치를 찾은 경우 뒤에 있는 기존 핸들러들을 한칸 앞으로 이동
+		g_handler_funcs[i] = g_handler_funcs[i + 1];
+		g_handler_priorities[i] = g_handler_priorities[i + 1];
+	}
+
+	if (id_founded)
+	{
+		g_handler_funcs[eventid][num_handlers] = "";
+		g_handler_priorities[eventid][num_handlers] = -1;
+		return true;
+	}
+
+	return false;
+}
+
+static stock GetHandlerID(eventid, const handler[])
+{
+	new num_handlers = g_num_handlers[eventid];
+
+	for (new i = 0; i < num_handlers; ++i)
+	{
+		if (strcmp(g_handler_funcs[eventid][i], handler, false) == 0)
+			return i;
+	}
+
+	return -1;
+}
+
+static stock GenerateHandlerID(eventid, priority)
+{
+	new num_handlers = g_num_handlers[eventid];
+
+	if (num_handlers >= MAX_EVENT_HANDLERS)
 		return -1;
+
+	new id = num_handlers;
+
+	// 우선순위를 지정하지 않은 경우 무조건 마지막 위치 지정
+	if (priority == DEFAULT_PRIORITY || priority < 0)
+		return id;
+	
+	new other_priority = -1;
+
+	// 우선순위에 맞는 위치 탐색
+	// 탐색에 실패한 경우 마지막 위치로 지정 됨
+	for (id = 0; id < num_handlers; ++id)
+	{
+		other_priority = g_handler_priorities[eventid][id];
+		if (other_priority == -1 || other_priority > priority)
+			break;
 	}
-	if(IsNull(eventName)) {} // ignore warning
-	
-	#if defined QMODULE_DEBUG_MODE
-		printf("[QModule] Event (ID: %d) was added.", eventIDX);
-	#endif
-	
-	return eventIDX++;
+
+	return id;
 }
 
-stock AddEventHandler(eventid, const handlerFunction[], priority = MAX_HANDLER_FUNCTION / 2)
+static stock GetModuleID(const module[])
 {
-	if(IsValidEvent(eventid) == 0) return 0;
-	if(IsNull(handlerFunction))
+	for (new i = 0; i < g_num_modules; i++)
 	{
-		printf("[QModule] Invalid handler function (Event ID: %d)", eventid);
-		return 0;
-	}
-	if(funcidx(handlerFunction) == -1)
-	{
-		printf("[QModule] Undefined symbol \"%s\"", handlerFunction);
-		return 0;
+		if (strcmp(g_module_names[i], module) == 0)
+			return i;
 	}
 
-	new i;
-	new idx = handlerIDX[eventid];
-
-	for(i = 0; i < idx; i ++)
-	{
-		if(strcmp(handlerName[eventid][i], handlerFunction) == 0)
-		{
-			printf("[QModule] Event ID(id: %d) of handler \"%s\" is already defined.", eventid, handlerFunction);
-			return 0;
-		}
-	}
-
-
-	if(idx >= MAX_HANDLER_FUNCTION)
-	{
-		printf("[QModule] Event ID(id: %d) of handler is already full. Max handler amount: "#MAX_HANDLER_FUNCTION"", eventid);
-		return 0;
-	}
-
-	if(priority == -1) idx = 0;
-	else
-	{
-		for(i = 0; i < MAX_HANDLER_FUNCTION; ++i)
-		{
-			if(handlerPriority[eventid][i] > priority)
-			{
-				idx = i;
-
-				break;
-			}
-		}
-	}
-
-	if(idx != handlerIDX[eventid])
-	{
-		new maxIdx = MAX_HANDLER_FUNCTION - 1;
-
-		for(i = maxIdx; i > idx; --i)
-		{
-			handlerName[eventid][i] = handlerName[eventid][i - 1];
-			handlerPriority[eventid][i] = handlerPriority[eventid][i - 1];
-		}
-	}
-	
-	strcpy(handlerName[eventid][idx], handlerFunction);
-	if(charfind(handlerName[eventid][idx], 0) == -1) handlerName[eventid][idx][31] = 0;
-
-	++handlerIDX[eventid];
-	
-	#if defined QMODULE_DEBUG_MODE
-		printf("[QModule] \"%s\" Handler was added for Event (ID: %d)", handlerFunction, eventid);
-	#endif
-	
-	return 1;
+	return -1;
 }
 
-stock RemoveEventHandler(eventid, const handlerFunction[])
+static stock LoadModule(const module[])
 {
-	if(IsValidEvent(eventid) == 0) return 0;
-	if(IsNull(handlerFunction))
-	{
-		printf("[QModule] Invalid handler function name. (Event ID: %d)", eventid);
-		return 0;
-	}
-	if(funcidx(handlerFunction) == -1)
-	{
-		printf("[QModule] Undefined symbol \"%s\"", handlerFunction);
-		return 0;
-	}
-	
-	new idx = handlerIDX[eventid];
+	new string[32];
 
-	for(new i = 0; i < idx; i ++)
-	{
-		if(strcmp(handlerName[eventid][i], handlerFunction) == 0)
-		{
-			handlerIDX[eventid]--;
-			idx -= 1;
-			
-			for(new j = i; j < idx; j ++)
-			{
-				handlerName[eventid][j] = handlerName[eventid][j + 1];
-				handlerPriority[eventid][j] = handlerPriority[eventid][j + 1];
-			}
-
-			handlerName[eventid][idx] = "";
-			
-			#if defined QMODULE_DEBUG_MODE
-				printf("[QModule] \"%s\" Handler was removed for Event (ID: %d)", handlerFunction, eventid);
-			#endif
-			
-			return 1;
-		}
-	}
-
-	return 0;
+	format(string, sizeof(string), "LoadModule_%s", module);
+	CallLocalFunction(string, "");
 }
 
-stock AddModule(const module[])
+static InitializeQModule(E_SCRIPT_TYPE: script_type)
 {
-	if(moduleIDX >= MAX_HANDLER_FUNCTION)
-	{
-		print("[QModule] Module is already full. Max module amount: "#MAX_HANDLER_FUNCTION"");
-		return 0;
-	}
-	if(IsNull(module))
-	{
-		print("[QModule] Invalid module name.");
-		return 0;
-	}
-	
-	for(new i = 0; i < moduleIDX; i++)
-	{
-		if(strcmp(moduleName[i], module) == 0)
-		{
-			printf("[QModule] Module \"%s\" is already defined.", module);
-			return 0;
-		}
-	}
-	
-	strcpy(moduleName[moduleIDX], module);
-	if(charfind(moduleName[moduleIDX], 0) == -1) moduleName[moduleIDX][20] = 0;
-	moduleIDX++;
-	
-	#if defined QMODULE_DEBUG_MODE
-		printf("[QModule] \"%s\" Module was added.", module);
-	#endif
-	
-	new chString[32];
-	format(chString, 32, "LoadModule_%s", module);
-	CallLocalFunction(chString, "");
-	return 1;
-}
+	g_script_loaded = true;
 
-stock InitializeQModule(type)
-{
-	_scriptLoaded = 1;
-
+	// 기본 이벤트 등록
 	AddEvent("OnFilterScriptInit");
 	AddEvent("OnGameModeInit");
 	AddEvent("OnFilterScriptExit");
@@ -953,19 +890,159 @@ stock InitializeQModule(type)
 	AddEvent("OnVehicleSirenStateChange");
 	AddEvent("OnPlayerCommandTextFail");
 
+	if (g_num_events != e_NATIVE_EVENTS)
+	{
+		print("[QModule] Failed to registering Native events.");
+		return 0;
+	}
+
 	ShowQModuleInitMessage();
 
-	if(type == 0) AddEventHandler(D_FilterScriptInit, "__InitMain");
-	else AddEventHandler(D_GameModeInit, "__InitMain");
+	if (script_type == SCRIPT_TYPE_FILTER_SCRIPT)
+		AddEventHandler(D_FilterScriptInit, "__InitMain");
+	else
+		AddEventHandler(D_GameModeInit, "__InitMain");
+	
+	return 1;
 }
 
-stock IsValidEvent(eventid)
+stock AddEvent(const eventName[])
 {
-	if(eventid < 0) printf("[QModule] Invalid event ID: %d", eventid);
-	else if(eventid >= eventIDX) printf("[QModule] Event ID(id: %d) out of range. Current range is: %d", eventid, eventIDX);
-	else return 1;
+	if (g_num_events >= MAX_EVENTS)
+	{
+		print("[QModule] Event is already full. Max event amount: "#MAX_EVENTS"");
+		return -1;
+	}
+	
+	if (IsNull(eventName)) {} // 경고 무시
+	
+#if defined QMODULE_DEBUG_MODE
+	printf("[QModule] Event (ID: %d) was added.", g_num_events);
+#endif
+	return g_num_events++;
+}
 
-	return 0;
+stock bool: IsValidEvent(eventid)
+{
+	if (eventid < 0 || eventid >= g_num_events)
+	{
+		printf("[QModule] Invalid event ID: %d.", eventid);
+		if (g_num_events > 0)
+			printf("[QModule] Current range is 0 ~ %d", g_num_events - 1);
+		else
+			print("[QModule] You are not registered any event.");
+		
+		return false;
+	}
+
+	return true;
+}
+
+stock AddEventHandler(eventid, const handler[], priority = DEFAULT_PRIORITY)
+{
+	new index = - 1;
+
+	if (!IsValidEvent(eventid))
+		return index;
+	
+	if (IsNull(handler))
+	{
+		printf("[QModule] Invalid handler function (Event ID: %d)", eventid);
+		return index;
+	}
+
+	if (funcidx(handler) == -1)
+	{
+		printf("[QModule] Undefined symbol \"%s\"", handler);
+		return index;
+	}
+
+	new num_handlers = g_num_handlers[eventid];
+	if (num_handlers >= MAX_EVENT_HANDLERS)
+	{
+		printf("[QModule] Event ID(id: %d) of handler is already full. Max handler amount: "#MAX_HANDLER_FUNCTION"",
+			   eventid);
+		return index;
+	}
+
+	index = GetHandlerID(eventid, handler);
+	if (index != -1)
+	{
+		index = -1;
+		printf("[QModule] Event ID(id: %d) of handler \"%s\" is already defined.",
+			   eventid, handler);
+		return index;
+	}
+	
+	index = InsertHandler(eventid, handler, priority);
+#if defined QMODULE_DEBUG_MODE
+	printf("[QModule] \"%s\" Handler was added for Event (ID: %d)",
+		   handler, eventid);
+#endif
+	return index;
+}
+
+stock bool: RemoveEventHandler(eventid, const handler[])
+{
+	if (!IsValidEvent(eventid))
+		return false;
+	
+	if (IsNull(handler))
+	{
+		printf("[QModule] Invalid handler function name. (Event ID: %d)",
+			   eventid);
+		return false;
+	}
+
+	if (funcidx(handler) == -1)
+	{
+		printf("[QModule] Undefined symbol \"%s\"", handler);
+		return false;
+	}
+	
+	new bool: success = RemoveHandler(eventid, handler);
+#if defined QMODULE_DEBUG_MODE
+	if (success)
+		printf("[QModule] \"%s\" Handler was removed for Event (ID: %d)", handlerFunction, eventid);
+#endif
+
+	return success;
+}
+
+stock AddModule(const module[])
+{
+	new moduleid = -1;
+
+	if (g_num_modules >= MAX_EVENT_HANDLERS)
+	{
+		print("[QModule] Module is already full. Max module amount: "#MAX_EVENT_HANDLERS"");
+		return moduleid;
+	}
+
+	if (IsNull(module))
+	{
+		print("[QModule] Invalid module name.");
+		return moduleid;
+	}
+	
+	moduleid = GetModuleID(module);
+	if (moduleid != -1)
+	{
+		moduleid = -1;
+		printf("[QModule] Module \"%s\" is already defined.", module);
+		return moduleid;
+	}
+	
+	strcpy(g_module_names[g_num_modules], module);
+	g_module_names[g_num_modules][MAX_MODULE_NAMES - 1] = '\0';
+	++g_num_modules;
+	
+#if defined QMODULE_DEBUG_MODE
+	printf("[QModule] \"%s\" Module was added.", module);
+#endif
+
+	LoadModule(module);
+	return 1;
 }
 
 static stock ShowQModuleInitMessage()
@@ -977,11 +1054,3 @@ static stock ShowQModuleInitMessage()
 	print("Copyright (c) 2018-2019 Qoo. All rights reserved.");
 	print("=============================================");
 }
-
-/*stock strfix(const source[])
-{
-	new chString[1024];
-	if(IsNull(source) == false) strmid(chString, source, 0, strlen(source), 1024);
-	else chString = "NULL";
-	return chString;
-}*/
