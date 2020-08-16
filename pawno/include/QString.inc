@@ -41,13 +41,13 @@
 	stock bool: FALSE = false;
 #endif
 
-#define IsNull(%0) ((%0[0] == 0) || (%0[0] == 1 && %0[1] == 0))
+#define IsNull(%0) IsNullAt(%0, 0)
+#define IsNullAt(%0,%1) ((%0[(%1)] == '\0') || (%0[(%1)] == '\1' && %0[(%1) + 1] == '\0'))
 #define strresult(%0,%1,%2) do { new length = strlen(%1); while((%2 < length) && (%1[%2] <= ' ')) %2 ++; strmid(%0, %1, %2, length, sizeof %0) } while (FALSE)
 #define strcpy(%0,%1) strcat((%0[0] = 0, %0), %1)
 
 static stock strchr_null(const string[], character)
 {
-	new bool: TRUE = true;
 	new i = 0;
 
 	while (TRUE)
@@ -131,14 +131,13 @@ stock strfix(source[])
 	}
 }
 
-stock strtok_r(string[], const delimiters[], &save_index, size = sizeof(string))
+stock strtok_r(string[], const delimiters[], &save_index)
 {
 	new index = save_index;
 	new end = 0;
 	
-	if (index >= size || string[index] == '\0' ||
-		(index + 1 < size
-			&& string[index] == '\1' && string[index + 1] == '\0'))
+	if (string[index] == '\0' ||
+		(string[index] == '\1' && string[index + 1] == '\0'))
 		return -1;
 	
 	index += strspn(string[index], delimiters);

@@ -134,6 +134,7 @@ v7.4
 
 v7.5:
 	1. QString v0.1.0 업데이트 지원
+	2. GetEventHandlerCount() 함수 추가
 */
 
 #if defined _QModule_included
@@ -165,7 +166,7 @@ main() { return 1; }
 #define HandlerLoop(%0)						for (new %0_i = 0, %0_max = g_num_handlers[%0]; %0_i < %0_max; ++%0_i)
 #define HandlerAction(%0,"%1"%2)			CallLocalFunction(g_handler_funcs[%0][%0_i], #%1%2)
 #define TriggerEvent(%0,%1,%2)				do { HandlerLoop(%0) { if ((HandlerAction(%0, %2)) == %1) return %1; } } while (FALSE)
-#define TriggerEventWithBreak(%0,%1,%2)		do { HandlerLoop(%0) { if ((HandlerAction(%0, %2)) == %1) break; } while (FALSE)
+#define TriggerEventWithBreak(%0,%1,%2)		do { HandlerLoop(%0) { if ((HandlerAction(%0, %2)) == %1) break; } } while (FALSE)
 #define TriggerEventNoSuspend(%0,%1)		do { HandlerLoop(%0) { HandlerAction(%0, %1); } } while (FALSE)
 
 #define MAX_EVENTS							128
@@ -254,9 +255,9 @@ new static bool: g_script_loaded = false;
 new static g_module_names[MAX_EVENT_HANDLERS][MAX_MODULE_NAMES];
 new static g_num_modules = 0;
 
-new static g_handler_funcs[MAX_EVENTS][MAX_EVENT_HANDLERS][MAX_HANDLER_FUNC_LEN];
-new static g_handler_priorities[MAX_EVENTS][MAX_EVENT_HANDLERS] = { -1, ... };
-new static g_num_handlers[MAX_EVENTS];
+new g_handler_funcs[MAX_EVENTS][MAX_EVENT_HANDLERS][MAX_HANDLER_FUNC_LEN];
+new static g_handler_priorities[MAX_EVENTS][MAX_EVENT_HANDLERS];
+new g_num_handlers[MAX_EVENTS];
 
 new static g_num_events = 0;
 
@@ -273,14 +274,6 @@ CreateContainer(playerList, MAX_PLAYERS);
 
 // 메인 콜백
 forward __InitMain();
-
-native old_strlen(string[]) = strlen;
-#if defined _ALS_strlen
-	#undef strlen
-#else
-	#define _ALS_strlen
-#endif
-#define strlen(%0) ((IsNull((%0))) ? (0) : (old_strlen((%0))))
 
 public OnFilterScriptInit()
 {
@@ -389,20 +382,15 @@ public OnPlayerText(playerid, text[])
 
 public OnPlayerCommandText(playerid, cmdtext[])
 {
-
 	new token_start, token_end;
 
-#define MAX_COMMAND_SIZE 145
-	token_start = strtok_r(cmdtext, " ", token_end, MAX_COMMAND_SIZE);
-#undef
+	token_start = strtok_r(cmdtext, " ", token_end);
 	strfix(cmdtext);
 
 	if (token_end > token_start) // 명령어 뒤에 파라미터가 있을 경우
-		TriggerEvent(D_PlayerCommandText, 1, "iss",
-					 playerid, cmdtext, cmdtext[token_end]);
+		TriggerEvent(D_PlayerCommandText, 1, "iss", playerid, cmdtext, cmdtext[token_end]);
 	else
-		TriggerEvent(D_PlayerCommandText, 1, "iss",
-					 playerid, cmdtext, "\1");
+		TriggerEvent(D_PlayerCommandText, 1, "iss", playerid, cmdtext, "\1");
 
 #if defined FILTERSCRIPT
 	return 0;
@@ -1053,6 +1041,16 @@ stock AddModule(const module[])
 	LoadModule(module);
 	return 1;
 }
+
+/*stock GetHandlerCountOfEvent(eventid)
+{
+	return g_num_handlers[eventid];
+}
+
+stock GetHandlerFuncOfEvent(eventid, handlerid)
+{
+	return g_handler_funcs[eventid][handlerid];
+}*/
 
 static stock ShowQModuleInitMessage()
 {
