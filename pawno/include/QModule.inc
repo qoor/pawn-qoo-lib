@@ -1,7 +1,7 @@
 //==============================================================================
 //                                 QModule
 //
-//                              version: v7.4
+//                              version: v7.5
 //                               author: Qoo
 //
 // MIT License
@@ -131,6 +131,9 @@ v7.4
 	2. 잘못된 이벤트 index 참조 버그를 수정하였습니다.
 	3. 네이티브 이벤트 수 검증 기능을 추가하였습니다.
 	4. 일부 성능 최적화 작업이 이루어졌습니다.
+
+v7.5:
+	1. QString v0.1.0 업데이트 지원
 */
 
 #if defined _QModule_included
@@ -148,7 +151,7 @@ v7.4
 	#include <QContainer>
 #endif
 
-#define QMODULE_ENGINE_VERSION "v7.4"
+#define QMODULE_ENGINE_VERSION "v7.5"
 
 main() { return 1; }
 
@@ -386,20 +389,26 @@ public OnPlayerText(playerid, text[])
 
 public OnPlayerCommandText(playerid, cmdtext[])
 {
-	new command[145];
-	new params[145];
 
-	ParamInitialize(command, params, cmdtext);
-	strfix(command);
-	strfix(params);
+	new token_start, token_end;
 
-	TriggerEvent(D_PlayerCommandText, 1, "iss", playerid, command, params);
+#define MAX_COMMAND_SIZE 145
+	token_start = strtok_r(cmdtext, " ", token_end, MAX_COMMAND_SIZE);
+#undef
+	strfix(cmdtext);
+
+	if (token_end > token_start) // 명령어 뒤에 파라미터가 있을 경우
+		TriggerEvent(D_PlayerCommandText, 1, "iss",
+					 playerid, cmdtext, cmdtext[token_end]);
+	else
+		TriggerEvent(D_PlayerCommandText, 1, "iss",
+					 playerid, cmdtext, "\1");
 
 #if defined FILTERSCRIPT
 	return 0;
 #else
 	// 명령어를 찾지 못했을 경우
-	TriggerEvent(D_PlayerCommandTextFail, 1, "is", playerid, command);
+	TriggerEvent(D_PlayerCommandTextFail, 1, "is", playerid, cmdtext);
 	return 1;
 #endif
 }
